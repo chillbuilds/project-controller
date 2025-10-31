@@ -6,6 +6,8 @@
 #include <Adafruit_SH110X.h>
 #include <WiFi.h>
 #include <WiFiServer.h>
+#include <WebServer.h>
+#include <html.h>
 
 #define i2c_address 0x3c
 
@@ -25,10 +27,11 @@ const int screenPaddingLeft = 4;
 const int screenPaddingTop = 2;
 
 WiFiServer server(3333);
+WebServer webServer(80);
 
 const int button1 = 0;
-const int button2 = 1;
-const int button3 = 2;
+const int button2 = 2;
+const int button3 = 1;
 const int button4 = 3;
 const int speaker = 10;
 
@@ -39,8 +42,23 @@ void printMessage(String message, int x, int y, bool clear) {
     display.clearDisplay();
   }
 
-  display.println(message);
+  display.print(message);
   display.display();
+}
+
+void serveRoot() {
+  webServer.send_P(200, "text/html", html);
+  marioSound();
+}
+
+void marioSound() {
+  tone(speaker, 659, 125); delay(130);
+  tone(speaker, 784, 125); delay(130);
+  tone(speaker, 1319, 125); delay(130);
+  tone(speaker, 1047, 125); delay(130);
+  tone(speaker, 1175, 125); delay(130);
+  tone(speaker, 1568, 125); delay(130);
+  noTone(speaker);
 }
 
 void setup() {
@@ -65,11 +83,13 @@ void setup() {
   // initialize wireless access point
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
-
   printMessage(String("IP: ") + WiFi.softAPIP().toString(), 0, 0, false);
   Serial.println(WiFi.softAPIP());
-
   server.begin();
+
+  // start html web server
+  webServer.on("/", serveRoot);
+  webServer.begin();
 
   // initialize SD card
   SPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
@@ -85,55 +105,27 @@ void setup() {
     Serial.println("sd card found");
   }
 
-  tone(speaker, 659, 125); delay(130);
-  tone(speaker, 784, 125); delay(130);
-  tone(speaker, 1319, 125); delay(130);
-  tone(speaker, 1047, 125); delay(130);
-  tone(speaker, 1175, 125); delay(130);
-  tone(speaker, 1568, 125); delay(130);
-  noTone(speaker);
+  marioSound();
 }
 
 void loop() {
+  webServer.handleClient();
 
   if(digitalRead(button1) == LOW){
     Serial.println("button 1");
-    // display.clearDisplay();
-    // display.setCursor(20, 20);
-    // display.print("button 1");
-    // display.display();
-    // tone(speaker, 262);
-    // delay(200);
-    // noTone(speaker);
+    printMessage("button 1", 0, 0, true);
   }
   if(digitalRead(button2) == LOW){
     Serial.println("button 2");
-    // display.clearDisplay();
-    // display.setCursor(20, 20);
-    // display.print("button 2");
-    // display.display();
-    // tone(speaker, 330);
-    // delay(200);
-    // noTone(speaker);
+    printMessage("button 2", 0, 0, true);
   }
   if(digitalRead(button3) == LOW){
     Serial.println("button 3");
-    // display.clearDisplay();
-    // display.setCursor(20, 20);
-    // display.print("button 3");
-    // display.display();
-    // tone(speaker, 392);
-    // delay(200);
-    // noTone(speaker);
+    printMessage("button 3", 0, 0, true);
+
   }
   if(digitalRead(button4) == LOW){
     Serial.println("button 4");
-    // display.clearDisplay();
-    // display.setCursor(20, 20);
-    // display.print("button 4");
-    // display.display();
-    // tone(speaker, 494);
-    // delay(200);
-    // noTone(speaker);
+    printMessage("button 4", 0, 0, true);
   }
 }
