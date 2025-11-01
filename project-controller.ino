@@ -131,6 +131,23 @@ void checkButtons() {
       lastButtonState[i] = reading;
   }
 
+  // exit menu
+  if (menuOpen && digitalRead(button2) == LOW) {
+    menuOpen = false;
+    printMessage(WiFi.softAPIP().toString() + String(":80"), 0, 0, true);
+    renderSDSpace();
+    return;
+  }
+  // exit sub menu
+  if (subMenuOpen && digitalRead(button2) == LOW) {
+    subMenuOpen = false;
+    menuOpen = true;
+    display.clearDisplay();
+    renderMenuBase();
+    renderMenuSelection(menuSelection, menuSelection);
+    return;
+  }
+
   // ignore all input right after menu opens
   if (menuOpen && (millis() - menuOpenTime < menuDebounceDelay)) {
     return;
@@ -141,15 +158,6 @@ void checkButtons() {
     menuOpen = false;
     printMessage(WiFi.softAPIP().toString() + String(":80"), 0, 0, true);
     renderSDSpace();
-    return;
-  }
-
-  if (subMenuOpen && digitalRead(button2) == LOW) {
-    subMenuOpen = false;
-    menuOpen = true;
-    display.clearDisplay();
-    renderMenuBase();
-    renderMenuSelection(menuSelection, menuSelection);
     return;
   }
 
