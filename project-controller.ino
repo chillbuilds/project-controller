@@ -92,7 +92,21 @@ void renderMenuSelection(int oldSel, int newSel) {
     display.display();
 }
 
+void renderClientMenu() {
+  printMessage("client menu", 0, 0, true);
+}
+void renderNetworkMenu() {
+  printMessage("network menu", 0, 0, true);
+}
+void renderStorageMenu() {
+  printMessage("storage menu", 0, 0, true);
+}
+void renderNotificationsMenu() {
+  printMessage("notification menu", 0, 0, true);
+}
+
 void checkButtons() {
+  static bool subMenuOpen = false;
   static bool comboTriggered = false;
   static unsigned long comboStartTime = 0;
   static unsigned long lastNavTime = 0;
@@ -130,6 +144,15 @@ void checkButtons() {
     return;
   }
 
+  if (subMenuOpen && digitalRead(button2) == LOW) {
+    subMenuOpen = false;
+    menuOpen = true;
+    display.clearDisplay();
+    renderMenuBase();
+    renderMenuSelection(menuSelection, menuSelection);
+    return;
+  }
+
   // menu navigation
   if(menuOpen && (millis() - lastNavTime > navDelay)) {
     if(buttonState[3] == LOW && menuSelection < 4) {  // down/right
@@ -145,25 +168,45 @@ void checkButtons() {
     }
   }
 
+  if (menuOpen && digitalRead(button3) == LOW) {
+    menuOpen = false;
+    subMenuOpen = true;
+    if (menuSelection == 0) {
+      renderClientMenu();
+    } else if (menuSelection == 1) {
+      renderNetworkMenu();
+    } else if (menuSelection == 2) {
+      renderStorageMenu();
+    } else if (menuSelection == 3) {
+      renderNotificationsMenu();
+    } else if (menuSelection == 4) {
+      printMessage("restarting...", 0, 0, true);
+      display.display();
+      delay(500);
+      ESP.restart();
+    }
+  }
+
+
   // combo detection
   bool comboHeld = (buttonState[0] == LOW && buttonState[3] == LOW && buttonState[1] == HIGH && buttonState[2] == HIGH);
 
   if (comboHeld) {
-      if (comboStartTime == 0) comboStartTime = millis();
+    if (comboStartTime == 0) comboStartTime = millis();
 
-      if (!comboTriggered && (millis() - comboStartTime >= 200)) {
-        comboTriggered = true;
+    if (!comboTriggered && (millis() - comboStartTime >= 200)) {
+      comboTriggered = true;
 
-          if (!menuOpen) {
-            menuOpen = true;
-            menuOpenTime = millis();  // record when it opened
-            display.clearDisplay();
-            renderMenuBase();
-            renderMenuSelection(menuSelection, menuSelection);
-          }
-
-        comboStartTime = 0;
+      if (!menuOpen) {
+        menuOpen = true;
+        menuOpenTime = millis();  // record when it opened
+        display.clearDisplay();
+        renderMenuBase();
+        renderMenuSelection(menuSelection, menuSelection);
       }
+
+      comboStartTime = 0;
+    }
   } else {
     comboStartTime = 0;
     comboTriggered = false;
