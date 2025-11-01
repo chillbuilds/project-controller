@@ -9,6 +9,19 @@
 // custom headers
 #include <html.h>
 
+void renderSDSpace() {
+  uint64_t totalBytes = SD.totalBytes();
+  uint64_t usedBytes  = SD.usedBytes();
+
+  float totalGB = (float)totalBytes / (1024.0 * 1024.0 * 1024.0);
+  float usedGB  = (float)usedBytes  / (1024.0 * 1024.0 * 1024.0);
+  float freeGB  = totalGB - usedGB;
+
+  Serial.printf("SD total space: %.2f GB\n", totalGB);
+  Serial.printf("SD used space:  %.2f GB\n", usedGB);
+  Serial.printf("SD free space:  %.2f GB\n", freeGB);
+}
+
 #define i2c_address 0x3c
 
 #define SD_MOSI 6
@@ -52,65 +65,104 @@ void printMessage(String message, int x, int y, bool clear) {
   display.display();
 }
 
+void renderMenuBase() {
+    printMessage("menu:", 0, 0, true);
+    display.fillRect(screenPaddingLeft, 10 + screenPaddingTop, 116, 1, SH110X_WHITE); // top border
+    printMessage("connected clients", 10, 14, false);
+    printMessage("network", 10, 22, false);
+    printMessage("storage", 10, 30, false);
+    printMessage("notifications", 10, 38, false);
+    printMessage("reboot", 10, 46, false);
+    display.display();
+}
+
+void renderMenuSelection(int oldSel, int newSel) {
+    // erase old
+    display.fillRect(3 + screenPaddingLeft, 17 + screenPaddingTop + (oldSel * 8), 3, 3, SH110X_BLACK);
+    // draw new
+    display.fillRect(3 + screenPaddingLeft, 17 + screenPaddingTop + (newSel * 8), 3, 3, SH110X_WHITE);
+    display.display();
+}
+
 void checkButtons() {
-    static bool comboTriggered = false;
-    static unsigned long comboStartTime = 0;
+  static bool comboTriggered = false;
+  static unsigned long comboStartTime = 0;
+  static unsigned long lastNavTime = 0;
+  static unsigned long menuOpenTime = 0;
+  static const unsigned long navDelay = 150;
+  static const unsigned long menuDebounceDelay = 500;
 
-    int buttonPins[4] = {button1, button2, button3, button4};
+  static int menuSelection = 0;
+  static int prevSelection = menuSelection;
 
-    for(int i=0; i<4; i++){
-        bool reading = digitalRead(buttonPins[i]);
+  int buttonPins[4] = {button1, button2, button3, button4};
 
-        if(reading != lastButtonState[i]){
-            lastButtonTime[i] = millis();
-        }
+  // debounce and read buttons
+  for (int i = 0; i < 4; i++) {
+      bool reading = digitalRead(buttonPins[i]);
+      if (reading != lastButtonState[i]) {
+          lastButtonTime[i] = millis();
+      }
+      if ((millis() - lastButtonTime[i]) > debounceDelay) {
+          buttonState[i] = reading;
+      }
+      lastButtonState[i] = reading;
+  }
 
-        if((millis() - lastButtonTime[i]) > debounceDelay){
-            buttonState[i] = reading;
-        }
+  // ignore all input right after menu opens
+  if (menuOpen && (millis() - menuOpenTime < menuDebounceDelay)) {
+    return;
+  }
 
-        lastButtonState[i] = reading;
+  // exit menu
+  if (menuOpen && digitalRead(button2) == LOW) {
+    menuOpen = false;
+    printMessage(WiFi.softAPIP().toString() + String(":80"), 0, 0, true);
+    return;
+  }
+
+  // menu navigation
+  if(menuOpen && (millis() - lastNavTime > navDelay)) {
+    if(buttonState[3] == LOW && menuSelection < 4) {  // down/right
+      prevSelection = menuSelection;
+      menuSelection++;
+      renderMenuSelection(prevSelection, menuSelection);
+      lastNavTime = millis();
+    } else if (buttonState[0] == LOW && menuSelection > 0) {  // up/left
+      prevSelection = menuSelection;
+      menuSelection--;
+      renderMenuSelection(prevSelection, menuSelection);
+      lastNavTime = millis();
     }
+  }
 
-    // Check if combo is held
-    bool comboHeld = (buttonState[0] == LOW && buttonState[3] == LOW &&
-                      buttonState[1] == HIGH && buttonState[2] == HIGH );
+  // combo detection
+  bool comboHeld = (buttonState[0] == LOW && buttonState[3] == LOW && buttonState[1] == HIGH && buttonState[2] == HIGH);
 
-    if(comboHeld){
-        if(comboStartTime == 0){
-            comboStartTime = millis(); // start timing
-        }
-        else if(!comboTriggered && (millis() - comboStartTime >= 200) && menuOpen == false){
-            comboTriggered = true;
+  if (comboHeld) {
+      if (comboStartTime == 0) comboStartTime = millis();
+
+      if (!comboTriggered && (millis() - comboStartTime >= 200)) {
+        comboTriggered = true;
+
+          if (!menuOpen) {
             menuOpen = true;
-            printMessage("menu:", 0, 0, true);
-            display.fillRect(screenPaddingLeft, 10 + screenPaddingTop, 116, 1, SH110X_WHITE); // top border
-            display.fillRect(3 + screenPaddingLeft, 17 + screenPaddingTop, 3, 3, SH110X_WHITE);
-            display.fillRect(4 + screenPaddingLeft, 26 + screenPaddingTop, 1, 1, SH110X_WHITE);
-            display.fillRect(4 + screenPaddingLeft, 34 + screenPaddingTop, 1, 1, SH110X_WHITE);
-            display.fillRect(4 + screenPaddingLeft, 42 + screenPaddingTop, 1, 1, SH110X_WHITE);
-            printMessage("connected clients", 10, 14, false);
-            printMessage("storage", 10, 22, false);
-            printMessage("notifications", 10, 30, false);
-            printMessage("reboot", 10, 38, false);
-            display.display();
-            comboStartTime = 0;
-        }
-         else if(!comboTriggered && (millis() - comboStartTime >= 200) && menuOpen == true){
-            comboTriggered = true;
-            menuOpen = false;
-            printMessage(String("IP: ") + WiFi.softAPIP().toString(), 0, 0, true);
-        }
-    } else {
-        // combo released, reset timer and trigger
+            menuOpenTime = millis();  // record when it opened
+            display.clearDisplay();
+            renderMenuBase();
+            renderMenuSelection(menuSelection, menuSelection);
+          }
+
         comboStartTime = 0;
-        comboTriggered = false;
-    }
+      }
+  } else {
+    comboStartTime = 0;
+    comboTriggered = false;
+  }
 }
 
 void serveRoot() {
   webServer.send_P(200, "text/html", html);
-  marioSound();
 }
 
 void textReceived() {
@@ -149,7 +201,7 @@ void setup() {
   // initialize wireless access point
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
-  printMessage(String("IP: ") + WiFi.softAPIP().toString(), 0, 0, false);
+  printMessage(WiFi.softAPIP().toString() + String(":80"), 0, 0, false);
   Serial.println(WiFi.softAPIP());
 
   // start html web server
@@ -162,6 +214,8 @@ void setup() {
 
   if (!SD.begin(SD_CS, SPI)) {
     Serial.println("card mount failed");
+  }else{
+    renderSDSpace();
   }
 
   uint8_t cardType = SD.cardType();
@@ -171,34 +225,11 @@ void setup() {
     Serial.println("sd card found");
   }
 
-  marioSound();
+  speakerTone();
 }
 
 void loop() {
   webServer.handleClient();
   checkButtons(); // non-blocking button debouncing
-  updateMarioSound(); //non-blocking tones
-
-  bool button1State = digitalRead(button1);
-  bool button2State = digitalRead(button2);
-  bool button3State = digitalRead(button3);
-  bool button4State = digitalRead(button4);
-
-  // if(digitalRead(button1) == LOW){
-  //   Serial.println("button 1");
-  //   printMessage("button 1", 0, 0, true);
-  // }
-  // if(digitalRead(button2) == LOW){
-  //   Serial.println("button 2");
-  //   printMessage("button 2", 0, 0, true);
-  // }
-  // if(digitalRead(button3) == LOW){
-  //   Serial.println("button 3");
-  //   printMessage("button 3", 0, 0, true);
-
-  // }
-  // if(digitalRead(button4) == LOW){
-  //   Serial.println("button 4");
-  //   printMessage("button 4", 0, 0, true);
-  // }
+  updateAudio(); //non-blocking tones
 }
