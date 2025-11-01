@@ -111,7 +111,7 @@ void checkButtons() {
   static unsigned long comboStartTime = 0;
   static unsigned long lastNavTime = 0;
   static unsigned long menuOpenTime = 0;
-  static const unsigned long navDelay = 150;
+  static const unsigned long navDelay = 200;
   static const unsigned long menuDebounceDelay = 500;
 
   static int menuSelection = 0;
@@ -119,51 +119,67 @@ void checkButtons() {
 
   int buttonPins[4] = {button1, button2, button3, button4};
 
-  // debounce and read buttons
+  // --- read + debounce into buttonState[] ---
   for (int i = 0; i < 4; i++) {
-      bool reading = digitalRead(buttonPins[i]);
-      if (reading != lastButtonState[i]) {
-          lastButtonTime[i] = millis();
-      }
-      if ((millis() - lastButtonTime[i]) > debounceDelay) {
-          buttonState[i] = reading;
-      }
-      lastButtonState[i] = reading;
+    bool reading = digitalRead(buttonPins[i]);
+    if (reading != lastButtonState[i]) {
+      lastButtonTime[i] = millis();
+    }
+    if ((millis() - lastButtonTime[i]) > debounceDelay) {
+      buttonState[i] = reading; // debounced value
+    }
+    lastButtonState[i] = reading;
   }
 
-  // exit menu
-  if (menuOpen && digitalRead(button2) == LOW) {
-    menuOpen = false;
-    printMessage(WiFi.softAPIP().toString() + String(":80"), 0, 0, true);
-    renderSDSpace();
+  // --- open-menu combo detection (uses debounced states) ---
+  bool comboHeld = (buttonState[0] == LOW && buttonState[3] == LOW && buttonState[1] == HIGH && buttonState[2] == HIGH);
+  if (comboHeld) {
+    if (comboStartTime == 0) comboStartTime = millis();
+    if (!comboTriggered && (millis() - comboStartTime >= 200)) {
+      comboTriggered = true;
+      if (!menuOpen) {
+        menuOpen = true;
+        menuOpenTime = millis();
+        display.clearDisplay();
+        renderMenuBase();
+        renderMenuSelection(menuSelection, menuSelection);
+        lastNavTime = millis(); // prevent immediate nav
+      }
+      comboStartTime = 0;
+    }
+  } else {
+    comboStartTime = 0;
+    comboTriggered = false;
+  }
+
+  // If menu just opened (or was just returned to), ignore input for debounce window
+  if (menuOpen && (millis() - menuOpenTime < menuDebounceDelay)) {
     return;
   }
-  // exit sub menu
-  if (subMenuOpen && digitalRead(button2) == LOW) {
+
+  // --- if in submenu and press "back" (button2), go back to main menu ---
+  if (subMenuOpen && buttonState[1] == LOW) {
     subMenuOpen = false;
     menuOpen = true;
     display.clearDisplay();
     renderMenuBase();
     renderMenuSelection(menuSelection, menuSelection);
+    menuOpenTime = millis();   // debounce after returning to menu
+    lastNavTime = millis();
     return;
   }
 
-  // ignore all input right after menu opens
-  if (menuOpen && (millis() - menuOpenTime < menuDebounceDelay)) {
-    return;
-  }
-
-  // exit menu
-  if (menuOpen && digitalRead(button2) == LOW) {
+  // --- if main menu open and press "back" (button2), exit menu entirely ---
+  if (menuOpen && buttonState[1] == LOW) {
     menuOpen = false;
     printMessage(WiFi.softAPIP().toString() + String(":80"), 0, 0, true);
     renderSDSpace();
     return;
   }
 
-  // menu navigation
-  if(menuOpen && (millis() - lastNavTime > navDelay)) {
-    if(buttonState[3] == LOW && menuSelection < 4) {  // down/right
+  // --- navigation while in menu (debounced nav delay) ---
+  if (menuOpen && (millis() - lastNavTime > navDelay)) {
+    if (buttonState[3] == LOW && menuSelection < 4) {  // down/right
       prevSelection = menuSelection;
       menuSelection++;
       renderMenuSelection(prevSelection, menuSelection);
@@ -176,9 +192,11 @@ void checkButtons() {
     }
   }
 
-  if (menuOpen && digitalRead(button3) == LOW) {
+  // --- select / enter submenu (button3) ---
+  if (menuOpen && buttonState[2] == LOW) {
     menuOpen = false;
     subMenuOpen = true;
+    // render appropriate submenu
     if (menuSelection == 0) {
       renderClientMenu();
     } else if (menuSelection == 1) {
@@ -193,31 +211,9 @@ void checkButtons() {
       delay(500);
       ESP.restart();
     }
-  }
-
-
-  // combo detection
-  bool comboHeld = (buttonState[0] == LOW && buttonState[3] == LOW && buttonState[1] == HIGH && buttonState[2] == HIGH);
-
-  if (comboHeld) {
-    if (comboStartTime == 0) comboStartTime = millis();
-
-    if (!comboTriggered && (millis() - comboStartTime >= 200)) {
-      comboTriggered = true;
-
-      if (!menuOpen) {
-        menuOpen = true;
-        menuOpenTime = millis();  // record when it opened
-        display.clearDisplay();
-        renderMenuBase();
-        renderMenuSelection(menuSelection, menuSelection);
-      }
-
-      comboStartTime = 0;
-    }
-  } else {
-    comboStartTime = 0;
-    comboTriggered = false;
+    // set a short debounce so we don't immediately re-trigger after entering submenu
+    menuOpenTime = millis();
+    return;
   }
 }
 
