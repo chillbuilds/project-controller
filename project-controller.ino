@@ -9,19 +9,6 @@
 // custom headers
 #include <html.h>
 
-void renderSDSpace() {
-  uint64_t totalBytes = SD.totalBytes();
-  uint64_t usedBytes  = SD.usedBytes();
-
-  float totalGB = (float)totalBytes / (1024.0 * 1024.0 * 1024.0);
-  float usedGB  = (float)usedBytes  / (1024.0 * 1024.0 * 1024.0);
-  float freeGB  = totalGB - usedGB;
-
-  Serial.printf("SD total space: %.2f GB\n", totalGB);
-  Serial.printf("SD used space:  %.2f GB\n", usedGB);
-  Serial.printf("SD free space:  %.2f GB\n", freeGB);
-}
-
 #define i2c_address 0x3c
 
 #define SD_MOSI 6
@@ -63,6 +50,27 @@ void printMessage(String message, int x, int y, bool clear) {
   }
   display.print(message);
   display.display();
+}
+
+void renderSDSpace() {
+  if(SD.cardType() == CARD_NONE){
+    printMessage("sd card not found", 0, 8, false);
+  }else{
+    uint64_t totalBytes = SD.totalBytes();
+    uint64_t usedBytes  = SD.usedBytes();
+
+    float totalGB = (float)totalBytes / (1024.0 * 1024.0 * 1024.0);
+    float usedGB  = (float)usedBytes  / (1024.0 * 1024.0 * 1024.0);
+
+    String message = "sd: ";
+    message += String(usedGB, 1);  // one decimal place
+    message += "gb/";
+    message += String(totalGB, 1);
+    message += "gb";
+
+    printMessage(message, 0, 8, false);
+    Serial.println(message);
+  }
 }
 
 void renderMenuBase() {
@@ -118,6 +126,7 @@ void checkButtons() {
   if (menuOpen && digitalRead(button2) == LOW) {
     menuOpen = false;
     printMessage(WiFi.softAPIP().toString() + String(":80"), 0, 0, true);
+    renderSDSpace();
     return;
   }
 
@@ -209,7 +218,7 @@ void setup() {
   webServer.on("/send-text", textReceived);
   webServer.begin();
 
-  // initialize SD card
+  // initialize sd card
   SPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
 
   if (!SD.begin(SD_CS, SPI)) {
